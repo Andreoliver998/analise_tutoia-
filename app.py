@@ -1,121 +1,130 @@
 # ============================================================
 # 📊 DASHBOARD DE DESPESAS PÚBLICAS — STREAMLIT + PANDAS + PLOTLY
-# Código completo com explicações detalhadas em cada parte
+# Com autenticação simples para acesso seguro
 # ============================================================
 
-# ------------------------------------------------------------
-# 🧠 Importando Bibliotecas
-# ------------------------------------------------------------
-
-import streamlit as st            # Streamlit -> cria interface web interativa
-import pandas as pd              # Pandas -> leitura, tratamento e análise de dados
-import plotly.express as px      # Plotly -> gráficos interativos e bonitos
-
+import streamlit as st
+import pandas as pd
+import plotly.express as px
 
 # ------------------------------------------------------------
-# ⚙️ Configuração inicial da página (modo tela cheia)
+# ⚙️ Configuração da página
 # ------------------------------------------------------------
+st.set_page_config(page_title="Transparência Pública", layout="wide")
 
-st.set_page_config(layout="wide")  # Deixa o dashboard ocupar a tela inteira
+
+# ============================================================
+# 🔐 SISTEMA DE LOGIN
+# ============================================================
+
+# Usuários autorizados (altere depois)
+users = {
+    "admin": "230398",          # Exemplo admin
+    "cliente": "tutoia"       # Exemplo cliente
+}
+
+def check_login():
+    """Função para controle de login"""
+    if "logged" not in st.session_state:
+        st.session_state.logged = False
+
+    if st.session_state.logged:
+        return True
+
+    st.title("🔐 Acesso Restrito ao Sistema")
+    user = st.text_input("Usuário")
+    password = st.text_input("Senha", type="password")
+    btn = st.button("Entrar")
+
+    if btn:
+        if user in users and users[user] == password:
+            st.session_state.logged = True
+            st.rerun()
+        else:
+            st.error("❌ Usuário ou senha incorretos")
+
+    return False
+
+# Se não estiver logado, encerra execução aqui
+if not check_login():
+    st.stop()
+
+# Botão logout
+with st.sidebar:
+    if st.button("🚪 Sair"):
+        st.session_state.logged = False
+        st.rerun()
 
 
-# ------------------------------------------------------------
-# 📥 Carregar e preparar os dados
-# ------------------------------------------------------------
+# ============================================================
+# 📥 CARREGAMENTO E TRATAMENTO DOS DADOS
+# ============================================================
 
-# Lendo o arquivo CSV com dados públicos
 df_dadaset = pd.read_csv(
     "archive/Portal Transparencia Despesas Gerais - Exercício 2025.csv",
-    encoding="latin1",  # Corrige acentos do português
-    sep=";",            # CSV separado por ";"
+    encoding="latin1",
+    sep=";"
 )
 
-# 🗓️ Convertendo coluna de datas para formato de data real
-df_dadaset["Data"] = pd.to_datetime(
-    df_dadaset["Data"], 
-    dayfirst=True,      # Dia primeiro (formato brasileiro)
-    errors="coerce"     # Se não conseguir converter, deixa como nulo
-)
-
-# Criando colunas de Ano e Nome do mês (para filtros e gráficos)
+# ✅ Converter datas
+df_dadaset["Data"] = pd.to_datetime(df_dadaset["Data"], dayfirst=True, errors="coerce")
 df_dadaset["Ano"] = df_dadaset["Data"].dt.year
 df_dadaset["Mes"] = df_dadaset["Data"].dt.month_name()
 
-
-# ------------------------------------------------------------
-# 💰 Convertendo valores financeiros para número
-# ------------------------------------------------------------
-
-# Lista com colunas que contêm valores monetários
-cols_valores = ['Valor Empenhado','Valor Liquidado','Valor Pago']
-
-# Loop para limpar e converter valores
+# ✅ Converter valores
+cols_valores = ["Valor Empenhado", "Valor Liquidado", "Valor Pago"]
 for col in cols_valores:
-    
-    # Converte para texto e remove pontos de milhar e troca vírgula por ponto
     df_dadaset[col] = (
         df_dadaset[col]
-        .astype(str)       # Converte para texto
-        .str.replace('.', '')   # Remove separador de milhar
-        .str.replace(',', '.')  # Troca vírgula por ponto
+        .astype(str)
+        .str.replace(".", "")
+        .str.replace(",", ".")
     )
-    
-    # Converte para número real
-    df_dadaset[col] = pd.to_numeric(df_dadaset[col], errors='coerce')
+    df_dadaset[col] = pd.to_numeric(df_dadaset[col], errors="coerce")
 
 
-# ------------------------------------------------------------
-# 🎛️ Barra lateral de filtros (menu lateral)
-# ------------------------------------------------------------
+# ============================================================
+# 🎛️ FILTROS
+# ============================================================
 
-st.sidebar.header("Filtros")  # Título do menu lateral
+st.sidebar.title("Filtros")
 
-# 📅 Filtro por Ano
 anos = sorted(df_dadaset["Ano"].dropna().unique())
-ano_sel = st.sidebar.selectbox("Ano", anos)
+ano_sel = st.sidebar.selectbox("Selecione o Ano", anos)
 
-# 🏢 Filtro de Fornecedor
 fornecedores = sorted(df_dadaset["Nome Fornecedor"].dropna().unique())
-fornecedor_sel = st.sidebar.multiselect("Fornecedor", fornecedores)
+fornecedor_sel = st.sidebar.multiselect("Selecione Fornecedor(es)", fornecedores)
 
-# Aplicando os filtros no DataFrame
 df_filt = df_dadaset[df_dadaset["Ano"] == ano_sel]
 
-# Se o usuário selecionar fornecedores, filtra também
 if fornecedor_sel:
     df_filt = df_filt[df_filt["Nome Fornecedor"].isin(fornecedor_sel)]
 
 
-# ------------------------------------------------------------
-# 📦 Indicadores (cards de totais)
-# ------------------------------------------------------------
+# ============================================================
+# 📦 MÉTRICAS (KPI CARDS)
+# ============================================================
 
-# Calculando totais
-total_empenhado = df_filt["Valor Empenhado"].sum()
+total_empenhado = df_filt["Valor Empenhado"].sum() 
 total_liquidado = df_filt["Valor Liquidado"].sum()
 total_pago = df_filt["Valor Pago"].sum()
-saldo_pagar = total_empenhado - total_pago  # Diferença entre empenhado e pago
+saldo_pagar = total_empenhado - total_pago
 
-# Título principal da página
-st.title("📊 Dashboard de Despesas Públicas")
+st.title("📊 Painel de Transparência Pública — Tutóia/MA")
 
-# Criando 4 colunas para exibir os indicadores
 col1, col2, col3, col4 = st.columns(4)
-
-# Exibindo valores formatados como moeda brasileira
-col1.metric("💰 Empenhado", f"R$ {total_empenhado:,.2f}")
-col2.metric("✅ Liquidado", f"R$ {total_liquidado:,.2f}")
-col3.metric("📦 Pago", f"R$ {total_pago:,.2f}")
+col1.metric("💰 Valor Empenhado", f"R$ {total_empenhado:,.2f}")
+col2.metric("✅ Valor Liquidado", f"R$ {total_liquidado:,.2f}")
+col3.metric("📦 Valor Pago", f"R$ {total_pago:,.2f}")
 col4.metric("⚠️ Saldo a Pagar", f"R$ {saldo_pagar:,.2f}")
 
 
-# ------------------------------------------------------------
-# 🏆 Gráfico — Top 10 fornecedores por Valor Pago
-# ------------------------------------------------------------
+# ============================================================
+# 🏆 TOP 10 FORNECEDORES — GRÁFICO
+# ============================================================
 
-st.subheader("🏆 Top 10 Fornecedores por Valor Pago")
+st.subheader("🏅 Top 10 Fornecedores por Valor Pago")
 
-# Agrupando dados e ordenando do maior para o menor
 top_fornec = (
     df_filt.groupby("Nome Fornecedor")["Valor Pago"]
     .sum()
@@ -123,31 +132,26 @@ top_fornec = (
     .head(10)
 )
 
-# Criando gráfico de barras horizontal
 fig = px.bar(
     top_fornec,
-    orientation='h',  # Barras horizontais
-    labels={"value": "Valor Pago", "index": "Fornecedor"},
+    orientation="h",
+    labels={"value": "Total Pago", "index": "Fornecedor"},
 )
 
-# Exibindo gráfico
 st.plotly_chart(fig, use_container_width=True)
 
 
-# ------------------------------------------------------------
-# 📄 Tabela com dados filtrados
-# ------------------------------------------------------------
+# ============================================================
+# 📄 TABELA E DOWNLOAD
+# ============================================================
 
-st.subheader("📄 Dados detalhados")
-st.dataframe(df_filt)  # Mostra a tabela filtrada na tela
+st.subheader("📄 Dados Detalhados")
 
-
-# ------------------------------------------------------------
-# 💾 Botão para download dos dados filtrados
-# ------------------------------------------------------------
+st.dataframe(df_filt)
 
 st.download_button(
-    "⬇️ Baixar dados filtrados",      # Texto do botão
-    df_filt.to_csv().encode("utf-8"), # Converte dados para CSV
-    "dados_filtrados.csv"             # Nome do arquivo
+    "⬇️ Baixar dados filtrados",
+    df_filt.to_csv(index=False).encode("utf-8"),
+    file_name="dados_filtrados.csv",
+    mime="text/csv"
 )
