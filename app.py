@@ -1,157 +1,88 @@
-# ============================================================
-# 📊 DASHBOARD DE DESPESAS PÚBLICAS — STREAMLIT + PANDAS + PLOTLY
-# Com autenticação simples para acesso seguro
-# ============================================================
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 
+# Configuração da página
+st.set_page_config(page_title="Dashboard de Despesas Públicas", layout="wide")
+
 # ------------------------------------------------------------
-# ⚙️ Configuração da página
+# 🔒 SISTEMA DE LOGIN
 # ------------------------------------------------------------
-st.set_page_config(page_title="Transparência Pública", layout="wide")
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
 
+def login():
+    st.title("🔐 Login de Acesso")
 
-# ============================================================
-# 🔐 SISTEMA DE LOGIN
-# ============================================================
-
-# Usuários autorizados (altere depois)
-users = {
-    "admin": "230398",          # Exemplo admin
-    "cliente": "tutoia"       # Exemplo cliente
-}
-
-def check_login():
-    """Função para controle de login"""
-    if "logged" not in st.session_state:
-        st.session_state.logged = False
-
-    if st.session_state.logged:
-        return True
-
-    st.title("🔐 Acesso Restrito ao Sistema")
-    user = st.text_input("Usuário")
+    username = st.text_input("Usuário")
     password = st.text_input("Senha", type="password")
-    btn = st.button("Entrar")
 
-    if btn:
-        if user in users and users[user] == password:
-            st.session_state.logged = True
+    if st.button("Entrar"):
+        if username == st.secrets["general"]["admin_user"] and password == st.secrets["general"]["admin_password"]:
+            st.session_state.logged_in = True
+            st.success("✅ Login realizado com sucesso!")
             st.rerun()
         else:
-            st.error("❌ Usuário ou senha incorretos")
+            st.error("Usuário ou senha incorretos!")
 
-    return False
+if not st.session_state.logged_in:
+    login()
+    st.stop()  # 🔥 Bloqueia o restante do app até logar
 
-# Se não estiver logado, encerra execução aqui
-if not check_login():
-    st.stop()
+# ------------------------------------------------------------
+# 💾 SE CHEGOU AQUI, ESTÁ AUTENTICADO
+# ------------------------------------------------------------
 
-# Botão logout
-with st.sidebar:
-    if st.button("🚪 Sair"):
-        st.session_state.logged = False
-        st.rerun()
+st.success("Bem-vindo, acesso autorizado ✅")
 
+# Carregando dados
+df_dadaset = pd.read_csv("archive/Portal Transparencia Despesas Gerais - Exercício 2025.csv", encoding="latin1", sep=";")
 
-# ============================================================
-# 📥 CARREGAMENTO E TRATAMENTO DOS DADOS
-# ============================================================
-
-df_dadaset = pd.read_csv(
-    "archive/Portal Transparencia Despesas Gerais - Exercício 2025.csv",
-    encoding="latin1",
-    sep=";"
-)
-
-# ✅ Converter datas
+# Converter datas e valores
 df_dadaset["Data"] = pd.to_datetime(df_dadaset["Data"], dayfirst=True, errors="coerce")
 df_dadaset["Ano"] = df_dadaset["Data"].dt.year
 df_dadaset["Mes"] = df_dadaset["Data"].dt.month_name()
 
-# ✅ Converter valores
-cols_valores = ["Valor Empenhado", "Valor Liquidado", "Valor Pago"]
+cols_valores = ['Valor Empenhado','Valor Liquidado','Valor Pago']
 for col in cols_valores:
     df_dadaset[col] = (
-        df_dadaset[col]
-        .astype(str)
-        .str.replace(".", "")
-        .str.replace(",", ".")
+        df_dadaset[col].astype(str)
+        .str.replace('.', '')
+        .str.replace(',', '.')
     )
-    df_dadaset[col] = pd.to_numeric(df_dadaset[col], errors="coerce")
+    df_dadaset[col] = pd.to_numeric(df_dadaset[col], errors='coerce')
 
-
-# ============================================================
-# 🎛️ FILTROS
-# ============================================================
-
-st.sidebar.title("Filtros")
-
+# Sidebar
+st.sidebar.header("Filtros")
 anos = sorted(df_dadaset["Ano"].dropna().unique())
-ano_sel = st.sidebar.selectbox("Selecione o Ano", anos)
-
+ano_sel = st.sidebar.selectbox("Ano", anos)
 fornecedores = sorted(df_dadaset["Nome Fornecedor"].dropna().unique())
-fornecedor_sel = st.sidebar.multiselect("Selecione Fornecedor(es)", fornecedores)
+fornecedor_sel = st.sidebar.multiselect("Fornecedor", fornecedores)
 
 df_filt = df_dadaset[df_dadaset["Ano"] == ano_sel]
-
 if fornecedor_sel:
     df_filt = df_filt[df_filt["Nome Fornecedor"].isin(fornecedor_sel)]
 
-
-# ============================================================
-# 📦 MÉTRICAS (KPI CARDS)
-# ============================================================
-
-total_empenhado = df_filt["Valor Empenhado"].sum() 
+# Indicadores
+total_empenhado = df_filt["Valor Empenhado"].sum()
 total_liquidado = df_filt["Valor Liquidado"].sum()
 total_pago = df_filt["Valor Pago"].sum()
 saldo_pagar = total_empenhado - total_pago
 
-st.title("📊 Painel de Transparência Pública — Tutóia/MA")
-
+st.title("📊 Dashboard de Despesas Públicas")
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("💰 Valor Empenhado", f"R$ {total_empenhado:,.2f}")
-col2.metric("✅ Valor Liquidado", f"R$ {total_liquidado:,.2f}")
-col3.metric("📦 Valor Pago", f"R$ {total_pago:,.2f}")
+col1.metric("💰 Empenhado", f"R$ {total_empenhado:,.2f}")
+col2.metric("✅ Liquidado", f"R$ {total_liquidado:,.2f}")
+col3.metric("📦 Pago", f"R$ {total_pago:,.2f}")
 col4.metric("⚠️ Saldo a Pagar", f"R$ {saldo_pagar:,.2f}")
 
-
-# ============================================================
-# 🏆 TOP 10 FORNECEDORES — GRÁFICO
-# ============================================================
-
-st.subheader("🏅 Top 10 Fornecedores por Valor Pago")
-
-top_fornec = (
-    df_filt.groupby("Nome Fornecedor")["Valor Pago"]
-    .sum()
-    .sort_values(ascending=False)
-    .head(10)
-)
-
-fig = px.bar(
-    top_fornec,
-    orientation="h",
-    labels={"value": "Total Pago", "index": "Fornecedor"},
-)
-
+# Gráfico
+st.subheader("🏆 Top 10 Fornecedores por Valor Pago")
+top_fornec = df_filt.groupby("Nome Fornecedor")["Valor Pago"].sum().sort_values(ascending=False).head(10)
+fig = px.bar(top_fornec, orientation='h', labels={"value": "Valor Pago", "index": "Fornecedor"})
 st.plotly_chart(fig, use_container_width=True)
 
-
-# ============================================================
-# 📄 TABELA E DOWNLOAD
-# ============================================================
-
-st.subheader("📄 Dados Detalhados")
-
+# Tabela e download
+st.subheader("📄 Dados detalhados")
 st.dataframe(df_filt)
-
-st.download_button(
-    "⬇️ Baixar dados filtrados",
-    df_filt.to_csv(index=False).encode("utf-8"),
-    file_name="dados_filtrados.csv",
-    mime="text/csv"
-)
+st.download_button("⬇️ Baixar dados filtrados", df_filt.to_csv().encode("utf-8"), "dados_filtrados.csv")
