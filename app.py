@@ -55,9 +55,11 @@ with st.sidebar:
 # 📥 CARREGAMENTO DOS DADOS
 # ------------------------------------------------------------
 df = pd.read_csv(
-    "archive/Portal Transparencia Despesas Gerais - Exercício 2025.csv",
-    encoding="latin1", sep=";"
+    "archive/despesas_2025.csv",
+    encoding="latin1",
+    sep=";"
 )
+
 
 # ------------------------------------------------------------
 # 🧹 TRATAMENTO DOS DADOS
